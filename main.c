@@ -28,10 +28,6 @@ size_t write_callback(void *ptr, size_t size, size_t nmemb, void *userdata) {
     size_t realsize = size * nmemb;
     MemoryBuffer *mem = (MemoryBuffer *)userdata;
 
-    // printf("hereeeeeee:  %s\n", userdata);
-    printf("testinggggggg\n");
-    printf("testinggg11111\n");
-
     // Reallocate memory to accommodate new data
     char *new_data = realloc(mem->data, mem->size + realsize + 1);
     if (new_data == NULL) {
@@ -46,10 +42,10 @@ size_t write_callback(void *ptr, size_t size, size_t nmemb, void *userdata) {
     mem->size += realsize;
     mem->data[mem->size] = '\0'; // Null-terminate the string
 
+    // printf("Mem Address %p\n", (void *)mem);
+
     return realsize;
 }
-
-
 
 char* checkUrl(int argc, char *argv[]) {
     if(argc < 2) {
@@ -73,6 +69,8 @@ int main(int argc, char *argv[]) {
     CURLcode res;
     MemoryBuffer buffer = {NULL, 0};
 
+    // printf("Buffer Address %p\n", (void *)&buffer);
+
     // Initialize libcurl
     curl = curl_easy_init();
     if (!curl) {
@@ -91,7 +89,7 @@ int main(int argc, char *argv[]) {
 
     // Set the callback function to handle the response data
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, buffer);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
 
     // Perform the HTTP request
     res = curl_easy_perform(curl);
