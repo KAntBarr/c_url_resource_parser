@@ -2,17 +2,48 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
+#define _POSIX_C_SOURCE 199309L  // Enable POSIX features in time.h
+#include <time.h>
 #include <curl/curl.h>
 
 char fileType;
+char running = 1;
 char paused;
-int timeout = 100;
+float timeout = 100.0; // must be in microseconds when 0.1 and 10 milliseconds when 1
+
 
 // Structure to hold dynamic buffer and its size
 typedef struct {
     char *data;
     size_t size;
 } MemoryBuffer;
+
+void speed_up() {
+    // if (timeout >= 12.5) {
+    if (timeout > 2) {
+        timeout /= 2;
+        // printf("timeout: %f", timeout);
+        printf("+Speeding Up+\n");
+    }
+}
+
+void slow_down() {
+    if (timeout < 800) {
+        timeout *= 2;
+        // printf("timeout: %f", timeout);
+        printf("-Slowing Down-\n");
+    }
+}
+
+void toggle_paused() {
+    if (paused) {
+        paused = 0;
+        printf("<|Resuming|>\n");
+    } else {
+        paused = 1;
+        printf("*|Stopping|*\n");
+    }
+}
 
 // Function to split a string by a delimiter character
 // Returns the number of substrings found
@@ -80,7 +111,7 @@ void handle_text(MemoryBuffer *buffer) {
 
     char **result;
     // printf("---Reading Text---\n%s\n", buffer->data);
-    printf("---Reading Text---\n");
+    printf("\n---Reading Text---\n");
 
     int count = split_string(buffer->data, '\n', &result);
     if (count == -1) {
@@ -89,36 +120,142 @@ void handle_text(MemoryBuffer *buffer) {
 
     int line = 0;
     int tempTime = 0;
-    while (1) {
+
+    struct timespec req, rem;
+    req.tv_sec = 0;
+    req.tv_nsec = 1000000;  // 1 milliseconds, allegedely
+
+    HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD numEvents;
+    INPUT_RECORD inputRecord;
+
+    // Enable keyboard input events
+    SetConsoleMode(hInput, ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT);
+
+    while (running) {
         // printf("Time %i\n", tempTime);
-        if (line == count) break;
-        if (GetAsyncKeyState('q') & 0x8000) {
-            printf("Key 'q' is pressed!\n");
+        if (line >= count) break;
+        
+        // Check for available input events
+        if (PeekConsoleInput(hInput, &inputRecord, 1, &numEvents) && numEvents > 0) {
+            // Read input events
+            ReadConsoleInput(hInput, &inputRecord, 1, &numEvents);
+
+            // Process input events
+            if (inputRecord.EventType == KEY_EVENT && inputRecord.Event.KeyEvent.bKeyDown) {
+                // Key press event
+                // printf("Key pressed: %c\n", inputRecord.Event.KeyEvent.uChar.AsciiChar);
+                switch ((char)inputRecord.Event.KeyEvent.uChar.AsciiChar) {
+                    case 'q':
+                    case 'Q':
+                        printf("Quitting\n");
+                        running = 0;
+                        break;
+                    case '+':
+                        speed_up();
+                        break;
+                    case '-':
+                        slow_down();
+                        break;
+                    case ' ':
+                        toggle_paused();
+                        break;
+                    default:
+                }
+            }
         }
-        if (GetAsyncKeyState('+') & 0x8000) {
-            printf("Key '+' is pressed!\n");
-        }
-        if (GetAsyncKeyState('-') & 0x8000) {
-            printf("Key '-' is pressed!\n");
-        }
-        if (GetAsyncKeyState(' ') & 0x8000) {
-            printf("Key 'space' is pressed!\n");
-        }
+
         if (!paused && tempTime == 0) {
-            printf("Line %d: %s\n", line + 1, result[line]);
+            printf("Line %d: %s\n\n", line + 1, result[line]);
             line++;
         }
-        Sleep(1);
-        tempTime = ++tempTime % timeout;
+        // Sleep(1);
+        nanosleep(&req, &rem);
+        if (!paused) {
+            tempTime = ++tempTime % (int)timeout;
+        }
     }
 
-    printf("---End Of Text---\n");
+    if (running) {
+        printf("---End Of Text---\n");
+    }
 
 
     free_result(result, count);
 }
 
 void handle_bytes(MemoryBuffer *buffer) {
+    long start = 0;
+    int tempTime = 0;
+
+    struct timespec req, rem;
+    req.tv_sec = 0;
+    req.tv_nsec = 1000000;  // 1 milliseconds, allegedely
+
+    HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD numEvents;
+    INPUT_RECORD inputRecord;
+
+    // Enable keyboard input events
+    SetConsoleMode(hInput, ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT);
+    printf("---Reading Bytes---\n\n");
+
+    while (running) {
+        if (start >= buffer->size) break;
+
+        // Check for available input events
+        if (PeekConsoleInput(hInput, &inputRecord, 1, &numEvents) && numEvents > 0) {
+            // Read input events
+            ReadConsoleInput(hInput, &inputRecord, 1, &numEvents);
+
+            // Process input events
+            if (inputRecord.EventType == KEY_EVENT && inputRecord.Event.KeyEvent.bKeyDown) {
+                // Key press event
+                // printf("Key pressed: %c\n", inputRecord.Event.KeyEvent.uChar.AsciiChar);
+                switch ((char)inputRecord.Event.KeyEvent.uChar.AsciiChar) {
+                    case 'q':
+                    case 'Q':
+                        printf("Quitting\n");
+                        running = 0;
+                        break;
+                    case '+':
+                        speed_up();
+                        break;
+                    case '-':
+                        slow_down();
+                        break;
+                    case ' ':
+                        toggle_paused();
+                        break;
+                    default:
+                }
+            }
+        }
+
+        if (!paused && tempTime == 0) {
+            printf("0x%02x: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n\n",\
+                    start, (unsigned char)buffer->data[start], (unsigned char)buffer->data[start+1],\
+                            (unsigned char)buffer->data[start+2], (unsigned char)buffer->data[start+3],\
+                            (unsigned char)buffer->data[start+4], (unsigned char)buffer->data[start+5],\
+                            (unsigned char)buffer->data[start+6], (unsigned char)buffer->data[start+7],\
+                            (unsigned char)buffer->data[start+8], (unsigned char)buffer->data[start+9],\
+                            (unsigned char)buffer->data[start+10], (unsigned char)buffer->data[start+11],\
+                            (unsigned char)buffer->data[start+12], (unsigned char)buffer->data[start+13],\
+                            (unsigned char)buffer->data[start+14], (unsigned char)buffer->data[start+15]);
+            start += 0x10;
+        }
+        // Sleep(1);
+        nanosleep(&req, &rem);
+        if (!paused) {
+            tempTime = ++tempTime % (int)timeout;
+        }
+    }
+
+
+
+    if (running) {
+        printf("---End Of Bytes---\n");
+    }
 
 }
 
@@ -241,6 +378,7 @@ int main(int argc, char *argv[]) {
 
     // Manipulate the response data in the buffer
     // printf("Response data:\n%s\n", buffer.data);
+    printf("Press Q/q to quit at anytime.\n");
     if (fileType) {
         printf("Text was detected.\n");
         handle_text(&buffer);
